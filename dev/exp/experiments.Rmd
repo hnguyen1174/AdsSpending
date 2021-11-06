@@ -1,0 +1,394 @@
+---
+title: "Exploration"
+author: "Gary Nguyen"
+---
+
+## 1. Set Up
+
+```{r load_libraries, include=FALSE}
+if(!require(tidyverse, quietly = TRUE)) install.packages("tidyverse")
+if(!require(glue, quietly = TRUE)) install.packages("glue")
+if(!require(here, quietly = TRUE)) install.packages("here")
+if(!require(lubridate, quietly = TRUE)) install.packages("lubridate")
+if(!require(cowplot, quietly = TRUE)) install.packages("cowplot")
+if(!require(ggthemes, quietly = TRUE)) install.packages("ggthemes")
+if(!require(DT, quietly = TRUE)) install.packages("DT")
+if(!require(devtools, quietly = TRUE)) install.packages("devtools")
+
+library(tidyverse)   # Data Processing
+library(glue)        # Text formatting
+library(here)        # File Location
+library(lubridate)   # Date processing
+library(cowplot)     # Data visualization
+library(ggthemes)    # Data Visualization
+library(DT)          # Printing table
+library(devtools)    # Maintain package
+```
+
+```{r source_helpers, include=FALSE}
+devtools::load_all()
+```
+
+## 2. Load and Process Data
+
+I created six variables:
+
+* `overspend`: campaign_spend - campaign_budget
+* `overspent`: logical flag for whether campaign_spend > campaign_budget
+* `overspent_1`: logical flag for whether campaign_spend > campaign_budget * 1.01
+* `log_campaign_budget`: log transformation of campaign budget
+* `log_campaign_spend`: log transformation of campaign spend
+* `capped_overspend`: max(0, overspend)
+* `log_capped_overspend`: log transformation of capped_overspend
+
+```{r load_data, echo=TRUE}
+df <- get_data()
+```
+
+## 3. Exploratory Data Analysis
+
+### Analysis 1: Missing Values
+
+There is no missing values.
+
+```{r check_na, echo=TRUE}
+if (nrow(df[rowSums(is.na(df))==0,]) == nrow(df)) {
+  print("There is no NA in dataframe")
+}
+```
+
+### Analysis 2: Box plots 
+
+Boxplots provide visual summaries of the data to quickly identify median, interquartile intervals and outliers. I plot box plots for log transformations of data below:
+
+```{r boxplot_log_campaign_budget, echo=TRUE, fig.width=8}
+p <- plot_boxplot_by_vars(df, "log_budget", "size")
+ggsave(file.path(here::here(), "fig/boxplot_log_campaign_budget.png"), p, width = 12)
+print(p)
+```
+
+```{r boxplot_log_campaign_spend, echo=TRUE, fig.width=8}
+p <- plot_boxplot_by_vars(df, "log_spend", "size")
+ggsave(file.path(here::here(), "fig/boxplot_log_campaign_spend.png"), p, width = 12)
+print(p)
+```
+
+```{r boxplot_log_capped_overspend, echo=TRUE, fig.width=8}
+p <- plot_boxplot_by_vars(df, "log_capped_overspend", "size")
+ggsave(file.path(here::here(), "fig/boxplot_log_capped_overspend.png"), p, width = 12)
+print(p)
+```
+
+### Analysis 3: Overspend by Bins
+
+I split overspend into bins and visualized:
+
+```{r plot_overspend_by_bins, echo=TRUE, fig.width=8}
+bins <- seq(from = -5000000, to = 500000, by = 50000)
+df$overspend_bins <- cut(df$overspend, breaks = bins)
+
+overspend_bins <- tibble(overspend_bins = sort(unique(df$overspend_bins)))
+
+p1 <- df %>% 
+  filter(treat == TRUE) %>% 
+  group_by(overspend_bins) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  right_join(overspend_bins, by = "overspend_bins") %>% 
+  mutate(n = replace_na(n, 0)) %>% 
+  ggplot(aes(x = n, y = overspend_bins, label = n)) +
+  geom_bar(stat = "identity", fill = "#69b3a2", color = "#e9ecef") +
+  geom_text(hjust = -1) +
+  xlim(0, 7500) +
+  ggtitle("Overspend, in dollar value, of the treatment group") +
+  xlab("Number of campaigns") +
+  ylab("Value range of overspend")
+
+p2 <- df %>% 
+  filter(treat == FALSE) %>% 
+  group_by(overspend_bins) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  right_join(overspend_bins, by = "overspend_bins") %>% 
+  mutate(n = replace_na(n, 0)) %>% 
+  ggplot(aes(x = n, y = overspend_bins, label = n)) +
+  geom_bar(stat = "identity", fill = "#69b3a2", color = "#e9ecef") +
+  geom_text(hjust = -1) +
+  xlim(0, 7500) +
+  ggtitle("Overspend, in dollar value, of the control group") +
+  xlab("Number of campaigns") +
+  ylab("Value range of overspend")
+  
+p <- plot_grid(p1, p2, labels = c('A', 'B'), align = 'v')
+ggsave(file.path(here::here(), "fig/overspend_dollar.png"), p, width = 12)
+print(p)
+```
+
+### Analysis 4: Distributions
+
+I plot the distributions of original and log-transformed data side-by-side.
+
+```{r hist_campaign_budget, echo=TRUE, fig.width=8}
+p <- plot_hist_by_vars(df, "budget")
+ggsave(file.path(here::here(), "fig/budget_hist.png"), p, width = 12)
+print(p)
+```
+
+```{r hist_campaign_spend, echo=TRUE, fig.width=8}
+p <- plot_hist_by_vars(df, "spend")
+ggsave(file.path(here::here(), "fig/spend_hist.png"), p, width = 12)
+print(p)
+```
+
+```{r hist_capped_overspend, echo=TRUE, fig.width=8}
+p <- plot_hist_by_vars(df, "capped_overspend")
+ggsave(file.path(here::here(), "fig/capped_overspend_hist.png"), p, width = 12)
+print(p)
+```
+
+## 4. Part 1: Exploration - How many campaigns overspent in the control group vs. in the treatment group?
+
+```{r question_1, echo=TRUE}
+df %>% 
+  group_by(treat) %>% 
+  summarize(prct_overspent = round(mean(overspent) * 100, 2),
+            num_overspend = sum(overspent),
+            count_group_size = n()) %>% 
+  DT::datatable()
+```
+
+## 5. Part 2: Exploring the success of the new ads product by assessing whether the new ad product reduces overspending?
+
+There are two ways to answer this question:
+
+* Option 1: Whether the new product reduces the proportion of campaigns that overspent.
+* Option 2: Whether the new product reduces the overspend dollar number.
+
+### Option 1: Whether the new product reduces the proportion of campaigns that overspent. (Proportion Z-test)
+
+One-sided two-sample Z-test:
+
+Hypotheses:
+
+* Null Hypothesis (H_0): p_treatment >= p_control
+* Alternative Hypothesis (H_A): p_treatment < p_control
+
+With p-value < 2.2e-16, we can reject the null hypothesis that p_treatment >= p_control. There is convincing evidence that p_treatment < p_control.
+
+
+```{r prop_test, echo=TRUE}
+perform_prop_test(df, var = 'overspent')
+```
+
+To assess the effect of size, I performed logistic regression and ANOVA.
+
+```{r logistic_regression, echo=TRUE}
+model_prop_overspent <- glm(overspent ~ treat + size + treat:size, 
+                            data = df, family = "binomial")
+summary(model_prop_overspent)
+```
+
+```{r anova_prop, echo=TRUE}
+anova(model_prop_overspent, test = "Chisq")
+```
+
+As the interaction term is not statistically significant, I reran the logistic regression without the interaction terms. The dummy variables for medium and large company size are statistically significant. The treatment effect is also statistically significant.
+
+```{r logistic_regression_wo_interaction, echo=TRUE}
+model_prop_overspent <- glm(overspent ~ treat + size, data = df, family = "binomial")
+summary(model_prop_overspent)
+```
+
+### Option 2: Whether the new product reduce the proportion of campaigns that overspent (T-test)
+
+#### Raw Overspend
+
+Raw overspending is spend - budget. Raw overspend might not reflect the full picture of wasted opportunity due to overspending, because a significant portion of campaigns underspent.
+
+##### Check distribution of test statistics
+
+This is to make sure that the sample mean indeed follow approximately a normal distribution.
+
+```{r sampling_control_overspend, echo=TRUE}
+
+# Check the distribution of sample means of overspend in the control group
+# Sample means of overspend indeed followed (approximately) normal distribution in the control group 
+control <- df %>% filter(treat == FALSE) %>% pull(overspend)
+set.seed(2021)
+to_test <- get_sample_means(control, n_inter = 10000, sample_size = 5000)
+
+p <- tibble(to_test = to_test) %>% 
+  ggplot(aes(x = to_test)) +
+  geom_histogram(bins = 100, fill = "#69b3a2", color = "#e9ecef", alpha = 0.9) +
+  ggtitle(glue("Mean Overspend for Sample Size = 5,000 (Control Group)"))
+
+ggsave(file.path(here::here(), "fig/raw_overspend_sampling_statistics.png"), p, width = 12)
+print(p)
+```
+
+```{r sampling_treatment_overspend, echo=TRUE}
+
+# Check the distribution of sample means of overspend in the treatment group
+# Sample means of overspend do not followed (approximately) normal distribution in the treatment group. This may mean the underlying population is too different from the normal distribution, which will not allow me to do a t-test.
+
+treatment <- df %>% filter(treat == TRUE) %>% pull(overspend)
+set.seed(2021)
+to_test <- get_sample_means(treatment, n_inter = 10000, sample_size = 5000)
+
+p <- tibble(to_test = to_test) %>% 
+  ggplot(aes(x = to_test)) +
+  geom_histogram(bins = 100, fill = "#69b3a2", color = "#e9ecef", alpha = 0.9) +
+  ggtitle(glue("Mean Overspend for Sample Size = 5,000 (Treatment Group)"))
+
+ggsave(file.path(here::here(), "raw_overspend_sampling_statistics_treatment.png"), p, width = 12)
+print(p)
+```
+
+##### Permutation Test for `overspend`
+
+Hypothesis: Mean overspend in Control >  Mean overspend in Treatment, so mean_control - mean_treatment should be larger than 0.
+
+```{r permutations, include=FALSE}
+# Get permutated means in 100,000 iterations
+# This can take some time.
+perm_diffs <- get_n_perm_diffs(df, "overspend", iter = 100000)
+saveRDS(perm_diffs, file.path(here::here(), "data/perm_diffs.rds"))
+```
+
+```{r plot_perm_diff, echo=TRUE}
+mean_control <-  df %>% filter(treat == FALSE) %>% pull(overspend) %>% mean()
+mean_treatment <-  df %>% filter(treat == TRUE) %>% pull(overspend) %>% mean()
+
+perm_diff_df <- tibble(perm_diffs = perm_diffs)
+
+p <- perm_diff_df %>% 
+  ggplot(aes(x = perm_diffs)) +
+  geom_histogram(bins = 100, fill = "#69b3a2", color = "#e9ecef", alpha = 0.9) +
+  geom_vline(xintercept = mean_control - mean_treatment) +
+  xlab("Mean overspend difference (in dollars)") +
+  ylab("Frequency") +
+  ggtitle("Frequency distribution for mean dollar overspend differences between control and treatment; \nThe vertical line shows the true observed difference")
+
+ggsave(file.path(here::here(), "fig/permutation_test.png"), p, width = 12)
+print(p)
+```
+
+The permuted differences exceed the observed differences 43.5% of the time. The observed difference is likely not statistically significant.
+
+```{r perm_diffs, echo=TRUE}
+mean(perm_diffs > mean_control - mean_treatment)
+```
+
+#### Capped Overspending
+
+Capped overspending is max(spend - budget, 0).
+
+##### Check distribution of test statistics
+
+```{r sampling_control_capped_overspend, echo=TRUE}
+# Check the distribution of sample means of capped overspend in the control group
+# Sample means of capped overspend indeed followed (approximately) normal distribution in the control group 
+
+control <- df %>% filter(treat == FALSE) %>% pull(capped_overspend)
+set.seed(2021)
+to_test <- get_sample_means(control, n_inter = 10000, sample_size = 5000)
+
+p <- tibble(to_test = to_test) %>% 
+  ggplot(aes(x = to_test)) +
+  geom_histogram(bins = 100, fill = "#69b3a2", color = "#e9ecef", alpha = 0.9) +
+  ggtitle(glue("Mean Capped Overspend for Sample Size = 5,000 (Control Group)"))
+
+ggsave(file.path(here::here(), "fig/capped_overspend_sampling_statistics_control.png"), p, width = 12)
+print(p)
+```
+
+```{r sampling_treatment_capped_overspend, echo=TRUE}
+# Check the distribution of sample means of capped overspend in the treatment group
+# Sample means of capped overspend indeed followed (approximately) normal distribution in the treatment group 
+
+treatment <- df %>% filter(treat == TRUE) %>% pull(capped_overspend)
+set.seed(2021)
+to_test <- get_sample_means(treatment, n_inter = 10000, sample_size = 5000)
+
+p <- tibble(to_test = to_test) %>% 
+  ggplot(aes(x = to_test)) +
+  geom_histogram(bins = 100, fill = "#69b3a2", color = "#e9ecef", alpha = 0.9) +
+  ggtitle(glue("Mean Capped Overspend for Sample Size = 5,000 (Treatment Group)"))
+
+ggsave(file.path(here::here(), 'fig/capped_overspend_sampling_statistics_treatment.png'), p, width = 12)
+print(p)
+```
+
+##### T-test
+
+Null hypothesis: mean_capped_overspend_treatment >= mean_capped_overspend_control
+Alternative hypothesis: mean_capped_overspend_treatment < mean_capped_overspend_control
+
+Failed to reject the null hypothesis. In fact, the observed mean (capped) overspend in the treatment group is larger than the observed mean (capped) overspend in the control group.
+
+```{r t_test_capped_overspend, echo=TRUE}
+t.test(capped_overspend ~ treat, data = df,
+       var.equal = FALSE, alternative = 'greater')
+```
+
+### Mann-Whitney-Wilcox Rank Test 
+
+Both p-values are < 0.05, the distribution of overspend are statistically significantly different between the control and treatment group, in both raw value and capped values.
+
+Null: The population distributions are the same, P(control > treatment) <= 0.5
+Alternative: Observations from control tend to be larger than observations from treatment, P(control > treatment) > 0.5
+
+```{r wilcox_overspend, echo=TRUE}
+wilcox.test(overspend ~ treat, data = df, alternative = 'greater')
+```
+
+```{r wilcox_overspend_capped, echo=TRUE}
+wilcox.test(capped_overspend ~ treat, data = df, alternative = 'greater')
+```
+
+## 6. Part 3: Assessing guardrail metrics - whether the new ads product reduces the budgets that campaign entered?
+
+### Analysis A: Welch's t-test on log_campaign_budget
+
+```{r dist_plot_log_campaign_budget, echo=TRUE}
+p1 <- df %>% 
+  filter(treat == TRUE) %>% 
+  ggplot(aes(x = log_budget)) +
+  geom_histogram(bins = 50, fill = "#69b3a2", color = "#e9ecef", alpha = 0.9) +
+  ggtitle(glue("Distribution of log(campaign_budget) in the Treatment Group"))
+p2 <- df %>% 
+  filter(treat == FALSE) %>% 
+  ggplot(aes(x = log_budget)) +
+  geom_histogram(bins = 50, fill = "#69b3a2", color = "#e9ecef", alpha = 0.9) +
+  ggtitle(glue("Distribution of log(campaign_budget) in the Control Group"))
+
+p <- plot_grid(p1, p2, nrow = 2, ncol = 1)
+ggsave(file.path(here::here(), 'fig/dist_plot_budget.png'), p)
+print(p)
+```
+
+One-sided two-sampled Welch t-test.
+
+* Null hypothesis (H_0): Mean log_campaign_budget (treatment) >= Mean log_campaign_budget (control)
+* Alternative hypothesis (H_A): Mean log_campaign_budget (treatment)) < Means log_campaign_budget (control)
+
+We can reject the null hypothesis. We estimate the treatment effect of the mean campaign budget in the control group is exp(4.633362 - 4.341255) = 1.34 times larger than the mean campaign budget in the treatment group, with statistical significant. Therefore, the treatment effect reduces campaign budget by approximately 26%.
+
+
+```{r t_test_campaign_budget, echo=TRUE}
+t.test(log_budget ~ treat, data = df,
+       var.equal = FALSE, alternative = 'greater')
+```
+
+### Analysis B: Size and Interaction Term
+
+```{r lm_log_campaign_budget, echo=TRUE}
+model <- lm(log_budget ~ treat + size + treat:size, data = df)
+summary(model)
+```
+
+We can observe that the interaction term is statistically significant.
+
+```{r anova_log_campaign_budget, echo=TRUE}
+anova(model)
+```
