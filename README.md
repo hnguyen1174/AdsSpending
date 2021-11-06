@@ -1,6 +1,11 @@
 # AdsSpending
 Analyzing Ads Spending from A/B Tests
 
+## Github Repo Structure
+
+* [Analysis](https://github.com/hnguyen1174/AdsSpending/blob/main/dev/exp/experiments.Rmd)
+* [Report](https://github.com/hnguyen1174/AdsSpending/blob/main/report/Report.pdf)
+
 ## Summary:
 * A social media company has an ads product on their platform where companies and brands can use to market their products and services.
 *	Overspending is a situation where the ads generate more clicks than the company budgets for, and therefore incur a cost to the social medica company. 
