@@ -15,8 +15,6 @@ Analyzing Ads Spending from A/B Tests
 
 Box plots of the log transformation of campaign budget in the control and treatment group, by company sizes:
 
-<img src="eda/figures/sent_len_dist.png" alt="drawing" width="350"/>
-
 ![image](https://user-images.githubusercontent.com/25354173/140620846-6f988a50-9be8-467f-8fea-1effd9fac99e.png)
 
 Box plots of the log transformation of campaign spend in the control and treatment group, by company sizes
